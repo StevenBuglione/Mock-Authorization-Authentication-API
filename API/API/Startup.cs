@@ -1,14 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using API.Data;
+using API.Data.Repositories;
+using API.Extentions;
 using API.Models;
+using AutoMapper;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -30,7 +36,6 @@ namespace API
         }
 
         public IConfiguration Configuration { get; }
-
 
         public void ConfigureDevelopmentServices(IServiceCollection services)
         {
@@ -58,10 +63,11 @@ namespace API
         }
 
 
+
         public void ConfigureServices(IServiceCollection services)
         {
 
-            IdentityBuilder builder = services.AddIdentityCore<ApplicationUser>(opt =>
+            IdentityBuilder builder = services.AddIdentityCore<AppUser>(opt =>
             {
                 opt.Password.RequireDigit = false;
                 opt.Password.RequiredLength = 4;
@@ -69,11 +75,13 @@ namespace API
                 opt.Password.RequireUppercase = false;
             });
 
-            builder = new IdentityBuilder(builder.UserType, typeof(Role), builder.Services);
+            builder = new IdentityBuilder(builder.UserType, typeof(AppRoles), builder.Services);
             builder.AddEntityFrameworkStores<DataContext>();
-            builder.AddRoleValidator<RoleValidator<Role>>();
-            builder.AddRoleManager<RoleManager<Role>>();
-            builder.AddSignInManager<SignInManager<ApplicationUser>>();
+            builder.AddRoleValidator<RoleValidator<AppRoles>>();
+            builder.AddRoleManager<RoleManager<AppRoles>>();
+            builder.AddSignInManager<SignInManager<AppUser>>();
+
+            services.AddAutoMapper(typeof(AppUserRepo).Assembly);
 
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
@@ -109,6 +117,7 @@ namespace API
                  Newtonsoft.Json.ReferenceLoopHandling.Ignore;
             });
             services.AddCors();
+         
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -118,8 +127,23 @@ namespace API
             {
                 app.UseDeveloperExceptionPage();
             }
+            else
+            {
+                app.UseExceptionHandler(builder =>
+                {
+                    builder.Run(async context =>
+                    {
+                        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-            app.UseHttpsRedirection();
+                        var error = context.Features.Get<IExceptionHandlerFeature>();
+                        if (error != null)
+                        {
+                            context.Response.AddApplicationError(error.Error.Message);
+                            await context.Response.WriteAsync(error.Error.Message);
+                        }
+                    });
+                });
+            }
 
             app.UseRouting();
 
@@ -128,9 +152,15 @@ namespace API
 
             app.UseCors(x => x.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
+            app.UseDefaultFiles();
+
+            app.UseStaticFiles();
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+               
+
             });
         }
     }
